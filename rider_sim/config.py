@@ -17,8 +17,12 @@ RIDERS_PATH: Path = PROCESSED_DIR / "riders.parquet"
 TRIPS_PATH: Path = PROCESSED_DIR / "trips.parquet"
 PERSONAS_PATH: Path = PROCESSED_DIR / "personas.parquet"
 SIM_CHOICES_PATH: Path = PROCESSED_DIR / "simulated_choices.parquet"
-EVAL_METRICS_PATH: Path = PROCESSED_DIR / "eval_metrics.json"
 
 PROMPTS_DIR: Path = REPO_ROOT / "prompts"
 RIDER_AGENT_PROMPT_V1: Path = PROMPTS_DIR / "rider_agent.v1.md"
+RIDER_AGENT_PROMPT_V2: Path = PROMPTS_DIR / "rider_agent.v2.md"
 LLM_CACHE_DB: Path = PROCESSED_DIR / "llm_cache.duckdb"
+
+TRACES_DIR: Path = PROCESSED_DIR / "traces"
+REPORTS_DIR: Path = REPO_ROOT / "reports"
+FIGURES_DIR: Path = REPORTS_DIR / "figures"

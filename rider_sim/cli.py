@@ -63,11 +63,28 @@ def simulate(
 
 
 @app.command()
-def evaluate() -> None:
-    """Validate simulated choices against real behavioral data."""
-    from rider_sim.evaluate import evaluate as run_eval
+def evaluate(
+    run_id: Annotated[str | None, typer.Option("--run-id", help="run identifier")] = None,
+    ablations: Annotated[str, typer.Option("--ablations", help="all | baselines | llm")] = "all",
+    n_riders: Annotated[int, typer.Option("--n-riders", min=1)] = 40,
+    offers_per_rider: Annotated[int, typer.Option("--offers-per-rider", min=1)] = 2,
+    seed: Annotated[int, typer.Option("--seed")] = DEFAULT_SEED,
+    provider: Annotated[
+        str, typer.Option("--provider", help="auto | anthropic | openai | offline")
+    ] = "auto",
+) -> None:
+    """Run the fidelity evaluation (traces, discriminator, ablations, report)."""
+    from rider_sim.eval.runner import run_evaluation
 
-    run_eval()
+    report_path = run_evaluation(
+        run_id=run_id,
+        ablations=ablations,
+        n_riders=n_riders,
+        offers_per_rider=offers_per_rider,
+        seed=seed,
+        provider=provider,
+    )
+    console.print(f"[green]wrote[/green] {report_path}")
 
 
 if __name__ == "__main__":

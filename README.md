@@ -40,7 +40,7 @@ python -m rider_sim fetch --month 2024-01
 python -m rider_sim build --n-riders 2000 --seed 7
 python -m rider_sim personas --n 2000 --seed 7
 python -m rider_sim simulate --n 200 --seed 7 [--mode auto|llm|statistical]
-python -m rider_sim evaluate
+python -m rider_sim evaluate --run-id demo --ablations all
 ```
 
 ## Data pipeline
@@ -126,12 +126,49 @@ zone pair, hour, miles, fare, wait) with price (×0.8/×1.0/×1.25) and wait
 Claude, OpenAI fallback) when a key is set, else by a trait-calibrated logit.
 Outputs `data/processed/simulated_choices.parquet`.
 
-### 5. Evaluation (`rider_sim/evaluate.py`)
+### 5. Fidelity evaluation (`rider_sim/eval/`)
 
-Validates simulated choices against real behavior: base accept rate, price
-and wait elasticities, zone-pair coherence, hour-of-day Jensen-Shannon
-distance vs real trips, and a LightGBM AUC measuring how much persona traits
-drive decisions. Writes `data/processed/eval_metrics.json`.
+The scientific core. `python -m rider_sim evaluate --run-id <id> --ablations all`
+runs every ablation config over a counterfactual offer grid derived from real
+trips, stores decision traces under `data/processed/traces/<run_id>/`, and
+renders `reports/fidelity_<run_id>.md` plus figures. Every number is computed
+from the data and traces; nothing is hardcoded.
+
+- **Discriminator** — featurizes real and simulated decision sequences
+  (accept rate, fare-vs-market percentile, accepted wait, surge elasticity,
+  purpose mix, action entropy, run lengths), trains a LightGBM classifier with
+  grouped K-fold by rider_id, and reports AUC with a bootstrap 95% CI. AUC
+  near 0.5 = indistinguishable; near 1.0 = trivially separable. Feature
+  importances name the failure mode.
+- **Calibration** — reliability curves and Brier score of predicted accept
+  probability vs real revealed acceptance (base offers are trips real riders
+  took; ×1.8-fare counterfactuals are labeled rejects), segmented by price
+  sensitivity tercile, wait tolerance tercile, and transit alternative.
+- **Distributions** — two-sample KS tests of accepted fare, accepted wait,
+  accept rate by hour, and purpose mix against the real marginals, with
+  Bonferroni-adjusted verdicts.
+- **Mechanism** — log-log elasticity of accept rate w.r.t. surge with a
+  bootstrap CI, checked for sign and magnitude against the literature range
+  below.
+- **Ablations** — full agent, no memory, demographics-only persona, no tool
+  use, prompt v1 vs v2, logit baseline, random baseline; one table of
+  config × {AUC, Brier, KS passed, elasticity verdict, cost per 1k decisions},
+  with permutation tests for AUC differences.
+
+Without API keys, the evaluator falls back to a deterministic offline backend
+(pipeline validation only); set `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` for real
+LLM configs. Reruns are free via the DuckDB LLM response cache.
+
+### Literature benchmark
+
+The mechanism check compares simulated surge elasticity against:
+
+> Cohen, Hahn, Hall, Levitt & Metcalfe (2016), *Using Big Data to Estimate
+> Consumer Surplus: The Case of Uber*, NBER Working Paper 22627. Own-price
+> elasticity of demand for Uber rides: roughly **-0.4 to -0.6**.
+
+The simulated accept-rate elasticity must be negative (sign PASS) and its
+bootstrap CI must overlap this range (magnitude PASS).
 
 ## Development
 
@@ -140,5 +177,8 @@ make lint   # ruff check + format check + mypy (strict)
 make test   # pytest
 ```
 
-Tests cover persona schema validity and seed-deterministic sampling.
+Tests cover persona schema validity, seed-deterministic sampling, and the
+evaluation pipeline with known ground truth (identical distributions →
+AUC CI covers 0.5; shifted sims → KS rejects; synthetic elasticities → the
+mechanism verdict is correct).
 All pipeline steps are deterministic for a fixed seed.

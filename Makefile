@@ -5,6 +5,7 @@ N_RIDERS ?= 2000
 SEED ?= 7
 PERSONAS_N ?= 2000
 SIM_N ?= 200
+EVAL_ABLATIONS ?= all
 
 install:
 	uv sync
@@ -29,5 +30,5 @@ personas: build
 simulate: personas
 	uv run python -m rider_sim simulate --n $(SIM_N) --seed $(SEED)
 
-evaluate: simulate
-	uv run python -m rider_sim evaluate
+evaluate: personas
+	uv run python -m rider_sim evaluate --ablations $(EVAL_ABLATIONS)

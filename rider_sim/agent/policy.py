@@ -84,6 +84,8 @@ class LLMRiderAgent:
         prompt_path: Path = RIDER_AGENT_PROMPT_V1,
         max_tool_rounds: int = MAX_TOOL_ROUNDS,
         memory_k: int = 5,
+        tools: ToolRegistry | None = None,
+        persona_payload: dict[str, Any] | None = None,
     ) -> None:
         self.persona = persona
         self.memory = memory
@@ -94,15 +96,20 @@ class LLMRiderAgent:
         self.seed = seed
         self.max_tool_rounds = max_tool_rounds
         self.memory_k = memory_k
-        self.tools: ToolRegistry = build_rider_tools(persona.rider_id, trips_path)
+        self.tools = tools if tools is not None else build_rider_tools(persona.rider_id, trips_path)
+        self.persona_payload = persona_payload
         self.prompt_template = prompt_path.read_text()
         self.decisions: list[dict[str, Any]] = []
         self.parse_failures: list[dict[str, Any]] = []
 
     def build_prompt(self, offer: RideOffer) -> tuple[str, str]:
         """Render the system prompt (persona + memory + offer) and user message."""
+        persona_json = json.dumps(
+            self.persona_payload if self.persona_payload is not None else self.persona.model_dump(),
+            sort_keys=True,
+        )
         context = {
-            "persona_json": json.dumps(self.persona.model_dump(), sort_keys=True),
+            "persona_json": persona_json,
             "memory_json": json.dumps(self.memory.recall(offer, self.memory_k), sort_keys=True),
             "offer_json": json.dumps(offer.model_dump(), sort_keys=True),
         }
@@ -225,7 +232,7 @@ class LLMRiderAgent:
         return asyncio.run(self._decide_async(offer))
 
 
-def _fit_logit(trips_path: Path, seed: int | None) -> tuple[LogisticRegression, list[str]]:
+def fit_logit_model(trips_path: Path, seed: int | None) -> tuple[LogisticRegression, list[str]]:
     """Fit a multinomial logit over the 4 actions on real trips + counterfactuals.
 
     Every real trip is an "accept" example (all real trips were taken). For a
@@ -283,10 +290,16 @@ class LogitRiderAgent:
         persona: RiderPersona,
         trips_path: Path = TRIPS_PATH,
         seed: int | None = None,
+        model: LogisticRegression | None = None,
     ) -> None:
         self.persona = persona
         self.rng = np.random.default_rng(seed)
-        self.model, self.features = _fit_logit(trips_path, seed)
+        if model is None:
+            model, features = fit_logit_model(trips_path, seed)
+        else:
+            features = [str(name) for name in model.feature_names_in_]
+        self.model = model
+        self.features = features
         self.classes: list[str] = [str(c) for c in self.model.classes_]
 
     def _features(self, offer: RideOffer) -> list[float]:
@@ -306,7 +319,7 @@ class LogitRiderAgent:
     def _feature_frame(self, offer: RideOffer) -> pd.DataFrame:
         return pd.DataFrame([self._features(offer)], columns=self.features)
 
-    def _accept_probability(self, offer: RideOffer) -> float:
+    def accept_probability(self, offer: RideOffer) -> float:
         proba = self.model.predict_proba(self._feature_frame(offer))[0]
         index = self.classes.index("accept")
         return float(proba[index])
@@ -316,7 +329,7 @@ class LogitRiderAgent:
         for _ in range(40):
             mid = (lo + hi) / 2.0
             candidate = offer.model_copy(update={"quoted_fare": mid})
-            if self._accept_probability(candidate) >= 0.5:
+            if self.accept_probability(candidate) >= 0.5:
                 lo = mid
             else:
                 hi = mid
@@ -333,7 +346,7 @@ class LogitRiderAgent:
             action=action,
             reasoning=(
                 f"multinomial logit baseline: accept prob "
-                f"{self._accept_probability(offer):.2f}, fare {offer.quoted_fare:.2f} "
+                f"{self.accept_probability(offer):.2f}, fare {offer.quoted_fare:.2f} "
                 f"vs persona median {self.persona.median_fare_paid:.2f}"
             ),
             confidence=confidence,

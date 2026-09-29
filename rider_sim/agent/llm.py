@@ -21,6 +21,7 @@ Shared behavior of :class:`LLMClient`:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
@@ -38,6 +39,52 @@ console = Console()
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_MAX_TOKENS = 1024
+
+# Price estimates (USD per 1M tokens) used for the cost-per-decision metric.
+# Defaults are snapshot estimates from provider pricing pages; override via
+# environment variables. Cached reads never hit the API and cost nothing.
+_INPUT_PRICE_ENV = {
+    "anthropic": ("ANTHROPIC_INPUT_PRICE_PER_1M", "ANTHROPIC_OUTPUT_PRICE_PER_1M"),
+    "openai": ("OPENAI_INPUT_PRICE_PER_1M", "OPENAI_OUTPUT_PRICE_PER_1M"),
+}
+_DEFAULT_PRICES_PER_1M = {"anthropic": (3.0, 15.0), "openai": (0.15, 0.6)}
+
+
+def estimate_tokens(text: str) -> int:
+    """Coarse token estimate from character count (4 chars/token)."""
+    return max(1, len(text) // 4)
+
+
+def price_per_1m(provider: str) -> tuple[float, float]:
+    input_env, output_env = _INPUT_PRICE_ENV.get(provider, ("", ""))
+    input_price, output_price = _DEFAULT_PRICES_PER_1M.get(provider, (0.0, 0.0))
+    raw_input = os.getenv(input_env) if input_env else None
+    if raw_input is not None:
+        with contextlib.suppress(ValueError):
+            input_price = float(raw_input)
+    raw_output = os.getenv(output_env) if output_env else None
+    if raw_output is not None:
+        with contextlib.suppress(ValueError):
+            output_price = float(raw_output)
+    return input_price, output_price
+
+
+def _request_token_count(request: LLMRequest) -> int:
+    parts = [request.system]
+    for message in request.messages:
+        parts.append(message.content)
+        for call in message.tool_calls:
+            parts.append(json.dumps(call.arguments))
+    for tool in request.tools:
+        parts.append(json.dumps(tool.input_schema))
+    return sum(estimate_tokens(part) for part in parts)
+
+
+def _response_token_count(response: LLMResponse) -> int:
+    parts = [response.content]
+    for call in response.tool_calls:
+        parts.append(json.dumps(call.arguments))
+    return sum(estimate_tokens(part) for part in parts)
 
 
 @dataclass(frozen=True)
@@ -272,14 +319,19 @@ class LLMClient:
     """Batched, cached, retrying wrapper over a provider backend."""
 
     backend: LLMBackend
-    cache_db: Path = LLM_CACHE_DB
+    cache_db: Path | None = LLM_CACHE_DB
     max_concurrency: int = 8
     max_retries: int = 3
     backoff_base_seconds: float = 1.0
     _semaphore: asyncio.BoundedSemaphore | None = field(default=None, init=False)
     _hits: int = field(default=0, init=False)
     _requests: int = field(default=0, init=False)
+    _cost_usd: float = field(default=0.0, init=False)
     _con: duckdb.DuckDBPyConnection | None = field(default=None, init=False)
+
+    @property
+    def cost_usd(self) -> float:
+        return self._cost_usd
 
     def _get_semaphore(self) -> asyncio.BoundedSemaphore:
         if self._semaphore is None:
@@ -287,6 +339,7 @@ class LLMClient:
         return self._semaphore
 
     def _connection(self) -> duckdb.DuckDBPyConnection:
+        assert self.cache_db is not None
         if self._con is None:
             self.cache_db.parent.mkdir(parents=True, exist_ok=True)
             self._con = duckdb.connect(str(self.cache_db))
@@ -324,6 +377,8 @@ class LLMClient:
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     def _cache_get(self, key: str) -> LLMResponse | None:
+        if self.cache_db is None:
+            return None
         row = (
             self._connection()
             .execute("SELECT response_json FROM llm_cache WHERE key = ?", [key])
@@ -341,6 +396,8 @@ class LLMClient:
         )
 
     def _cache_put(self, key: str, response: LLMResponse) -> None:
+        if self.cache_db is None:
+            return
         payload = json.dumps(
             {
                 "content": response.content,
@@ -355,6 +412,12 @@ class LLMClient:
             "INSERT OR REPLACE INTO llm_cache (key, response_json) VALUES (?, ?)",
             [key, payload],
         )
+
+    def _record_cost(self, request: LLMRequest, response: LLMResponse) -> None:
+        input_price, output_price = price_per_1m(self.backend.name)
+        input_tokens = _request_token_count(request)
+        output_tokens = _response_token_count(response)
+        self._cost_usd += (input_tokens * input_price + output_tokens * output_price) / 1_000_000.0
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
         """One request with caching, concurrency limit, and retry backoff."""
@@ -376,6 +439,7 @@ class LLMClient:
                         raise
                     await asyncio.sleep(self.backoff_base_seconds * (2**attempt))
         assert response is not None
+        self._record_cost(request, response)
         self._cache_put(key, response)
         return response
 

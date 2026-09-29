@@ -12,6 +12,9 @@ dist/
 # Data (raw downloads + processed artifacts are regenerable)
 /data/
 
+# Generated evaluation reports
+/reports/
+
 # Tool caches
 .pytest_cache/
 .mypy_cache/

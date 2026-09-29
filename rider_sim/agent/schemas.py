@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Purpose = Literal["commute", "social", "errand", "airport"]
 EtaFraming = Literal["numeric", "range", "reassuring"]
+TimeOfDay = Literal["morning", "midday", "evening", "night"]
 Action = Literal["accept", "reject", "wait_for_better", "switch_mode"]
 
 MAX_REASONING_WORDS = 60
@@ -33,7 +34,7 @@ class RideOffer(BaseModel):
     eta_minutes: float = Field(gt=0.0)
     eta_framing: EtaFraming
     discount_pct: float = Field(ge=0.0, le=100.0)
-    time_of_day: Literal["morning", "midday", "evening", "night"]
+    time_of_day: TimeOfDay
     weather: str = Field(min_length=1)
     transit_alt_minutes: float = Field(ge=0.0)
 
