@@ -36,3 +36,8 @@ evaluate: personas
 
 screen:
 	uv run python -m rider_sim screen --run-id $(RUN_ID) --backtest
+
+docker-eval:
+	docker compose run --rm sim evaluate --run-id docker --ablations all \
+		--provider offline --n-riders 40 --offers-per-rider 2 --seed 7 \
+		--cache-db tests/fixtures/cache/llm_cache.duckdb

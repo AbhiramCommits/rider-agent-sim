@@ -73,10 +73,28 @@ def reliability_curves(
 def run_calibration(trace: pd.DataFrame, n_bins: int = 10) -> dict[str, object]:
     labeled = labeled_offers(trace)
     if len(labeled) < 4:
-        return {"brier": float("nan"), "curves": {}, "n_labeled": len(labeled)}
+        return {
+            "brier": float("nan"),
+            "brier_by_segment": {},
+            "curves": {},
+            "n_labeled": len(labeled),
+        }
     brier = float(brier_score_loss(labeled["label"], labeled["p_accept"]))
+    segment_briers: dict[str, float] = {}
+    for column in SEGMENT_COLUMNS:
+        if column == "has_transit_alternative":
+            groups = {str(v): g for v, g in labeled.groupby(column)}
+        else:
+            groups = {str(t): g for t, g in labeled.groupby(tercile_labels(labeled[column]))}
+        for name, group in sorted(groups.items()):
+            if len(group) < 4:
+                continue
+            segment_briers[f"{column}={name}"] = float(
+                brier_score_loss(group["label"], group["p_accept"])
+            )
     return {
         "brier": brier,
+        "brier_by_segment": segment_briers,
         "curves": reliability_curves(labeled, n_bins),
         "n_labeled": len(labeled),
     }

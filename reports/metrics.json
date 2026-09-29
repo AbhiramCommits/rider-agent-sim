@@ -1,0 +1,362 @@
+{
+  "run_id": "testrun",
+  "provider": "offline",
+  "seed": 7,
+  "configs": {
+    "full": {
+      "n_decisions": 48,
+      "discriminator_auc": 1.0,
+      "auc_ci_low": 1.0,
+      "auc_ci_high": 1.0,
+      "brier": 0.30376337499999995,
+      "brier_by_segment": {
+        "price_sensitivity=high": 0.33897649999999996,
+        "price_sensitivity=low": 0.31123933333333337,
+        "price_sensitivity=mid": 0.272812,
+        "wait_tolerance_minutes=high": 0.27550600000000003,
+        "wait_tolerance_minutes=low": 0.35266766666666677,
+        "wait_tolerance_minutes=mid": 0.2736973333333333,
+        "has_transit_alternative=False": 0.3061316,
+        "has_transit_alternative=True": 0.2998163333333333
+      },
+      "ks_passed": 3,
+      "ks_marginals": {
+        "accepted_fare": {
+          "statistic": 0.15,
+          "p_value": 0.9831368772656193,
+          "passed": true
+        },
+        "accepted_wait": {
+          "statistic": 0.5,
+          "p_value": 0.012298612583953778,
+          "passed": false
+        },
+        "accept_rate_by_hour": {
+          "statistic": 0.75,
+          "p_value": 0.018648018648018645,
+          "passed": true
+        },
+        "purpose_mix": {
+          "statistic": 0.45,
+          "p_value": 0.0335416594061465,
+          "passed": true
+        }
+      },
+      "elasticity": -1.392026012706814,
+      "elasticity_ci_low": -1.9888885732663046,
+      "elasticity_ci_high": -0.511156665213074,
+      "elasticity_sign": "negative",
+      "elasticity_verdict": "PASS",
+      "cost_usd": 0.0,
+      "cost_per_1k": 0.0,
+      "latency_p50": 0.0005140413995832205,
+      "latency_p95": 0.0016718730563297865
+    },
+    "prompt_v2": {
+      "n_decisions": 48,
+      "discriminator_auc": 1.0,
+      "auc_ci_low": 1.0,
+      "auc_ci_high": 1.0,
+      "brier": 0.30376337499999995,
+      "brier_by_segment": {
+        "price_sensitivity=high": 0.33897649999999996,
+        "price_sensitivity=low": 0.31123933333333337,
+        "price_sensitivity=mid": 0.272812,
+        "wait_tolerance_minutes=high": 0.27550600000000003,
+        "wait_tolerance_minutes=low": 0.35266766666666677,
+        "wait_tolerance_minutes=mid": 0.2736973333333333,
+        "has_transit_alternative=False": 0.3061316,
+        "has_transit_alternative=True": 0.2998163333333333
+      },
+      "ks_passed": 3,
+      "ks_marginals": {
+        "accepted_fare": {
+          "statistic": 0.15,
+          "p_value": 0.9831368772656193,
+          "passed": true
+        },
+        "accepted_wait": {
+          "statistic": 0.5,
+          "p_value": 0.012298612583953778,
+          "passed": false
+        },
+        "accept_rate_by_hour": {
+          "statistic": 0.75,
+          "p_value": 0.018648018648018645,
+          "passed": true
+        },
+        "purpose_mix": {
+          "statistic": 0.45,
+          "p_value": 0.0335416594061465,
+          "passed": true
+        }
+      },
+      "elasticity": -1.392026012706814,
+      "elasticity_ci_low": -1.9888885732663046,
+      "elasticity_ci_high": -0.511156665213074,
+      "elasticity_sign": "negative",
+      "elasticity_verdict": "PASS",
+      "cost_usd": 0.0,
+      "cost_per_1k": 0.0,
+      "latency_p50": 0.0005466032307595015,
+      "latency_p95": 0.0032438992988318197,
+      "auc_delta_vs_full": 0.0,
+      "brier_delta_vs_full": 0.0
+    },
+    "no_memory": {
+      "n_decisions": 48,
+      "discriminator_auc": 1.0,
+      "auc_ci_low": 1.0,
+      "auc_ci_high": 1.0,
+      "brier": 0.30376337499999995,
+      "brier_by_segment": {
+        "price_sensitivity=high": 0.33897649999999996,
+        "price_sensitivity=low": 0.31123933333333337,
+        "price_sensitivity=mid": 0.272812,
+        "wait_tolerance_minutes=high": 0.27550600000000003,
+        "wait_tolerance_minutes=low": 0.35266766666666677,
+        "wait_tolerance_minutes=mid": 0.2736973333333333,
+        "has_transit_alternative=False": 0.3061316,
+        "has_transit_alternative=True": 0.2998163333333333
+      },
+      "ks_passed": 3,
+      "ks_marginals": {
+        "accepted_fare": {
+          "statistic": 0.15,
+          "p_value": 0.9831368772656193,
+          "passed": true
+        },
+        "accepted_wait": {
+          "statistic": 0.5,
+          "p_value": 0.012298612583953778,
+          "passed": false
+        },
+        "accept_rate_by_hour": {
+          "statistic": 0.75,
+          "p_value": 0.018648018648018645,
+          "passed": true
+        },
+        "purpose_mix": {
+          "statistic": 0.45,
+          "p_value": 0.0335416594061465,
+          "passed": true
+        }
+      },
+      "elasticity": -1.392026012706814,
+      "elasticity_ci_low": -1.9888885732663046,
+      "elasticity_ci_high": -0.511156665213074,
+      "elasticity_sign": "negative",
+      "elasticity_verdict": "PASS",
+      "cost_usd": 0.0,
+      "cost_per_1k": 0.0,
+      "latency_p50": 0.00042104138992726803,
+      "latency_p95": 0.0007264251122251151,
+      "auc_delta_vs_full": 0.0,
+      "brier_delta_vs_full": 0.0
+    },
+    "demographics_only": {
+      "n_decisions": 48,
+      "discriminator_auc": 0.8828125,
+      "auc_ci_low": 0.7166964285714287,
+      "auc_ci_high": 1.0,
+      "brier": 0.34842275,
+      "brier_by_segment": {
+        "price_sensitivity=high": 0.33402,
+        "price_sensitivity=low": 0.31646566666666665,
+        "price_sensitivity=mid": 0.3899816666666667,
+        "wait_tolerance_minutes=high": 0.45823200000000003,
+        "wait_tolerance_minutes=low": 0.33613099999999996,
+        "wait_tolerance_minutes=mid": 0.28750833333333337,
+        "has_transit_alternative=False": 0.3263843999999999,
+        "has_transit_alternative=True": 0.3851533333333334
+      },
+      "ks_passed": 0,
+      "ks_marginals": {
+        "accepted_fare": {
+          "statistic": NaN,
+          "p_value": NaN,
+          "passed": false
+        },
+        "accepted_wait": {
+          "statistic": NaN,
+          "p_value": NaN,
+          "passed": false
+        },
+        "accept_rate_by_hour": {
+          "statistic": 1.0,
+          "p_value": 0.00015540015540015537,
+          "passed": false
+        },
+        "purpose_mix": {
+          "statistic": NaN,
+          "p_value": NaN,
+          "passed": false
+        }
+      },
+      "elasticity": -0.7030631474107049,
+      "elasticity_ci_low": -0.9729246739881816,
+      "elasticity_ci_high": 0.042443225740413724,
+      "elasticity_sign": "negative",
+      "elasticity_verdict": "PASS",
+      "cost_usd": 0.0,
+      "cost_per_1k": 0.0,
+      "latency_p50": 0.0004425421357154846,
+      "latency_p95": 0.0008270539809018372,
+      "auc_delta_vs_full": -0.1171875,
+      "brier_delta_vs_full": 0.04465937500000006
+    },
+    "no_tools": {
+      "n_decisions": 48,
+      "discriminator_auc": 1.0,
+      "auc_ci_low": 1.0,
+      "auc_ci_high": 1.0,
+      "brier": 0.30376337499999995,
+      "brier_by_segment": {
+        "price_sensitivity=high": 0.33897649999999996,
+        "price_sensitivity=low": 0.31123933333333337,
+        "price_sensitivity=mid": 0.272812,
+        "wait_tolerance_minutes=high": 0.27550600000000003,
+        "wait_tolerance_minutes=low": 0.35266766666666677,
+        "wait_tolerance_minutes=mid": 0.2736973333333333,
+        "has_transit_alternative=False": 0.3061316,
+        "has_transit_alternative=True": 0.2998163333333333
+      },
+      "ks_passed": 3,
+      "ks_marginals": {
+        "accepted_fare": {
+          "statistic": 0.15,
+          "p_value": 0.9831368772656193,
+          "passed": true
+        },
+        "accepted_wait": {
+          "statistic": 0.5,
+          "p_value": 0.012298612583953778,
+          "passed": false
+        },
+        "accept_rate_by_hour": {
+          "statistic": 0.75,
+          "p_value": 0.018648018648018645,
+          "passed": true
+        },
+        "purpose_mix": {
+          "statistic": 0.45,
+          "p_value": 0.0335416594061465,
+          "passed": true
+        }
+      },
+      "elasticity": -1.392026012706814,
+      "elasticity_ci_low": -1.9888885732663046,
+      "elasticity_ci_high": -0.511156665213074,
+      "elasticity_sign": "negative",
+      "elasticity_verdict": "PASS",
+      "cost_usd": 0.0,
+      "cost_per_1k": 0.0,
+      "latency_p50": 0.0004565210547298193,
+      "latency_p95": 0.0009491753997281192,
+      "auc_delta_vs_full": 0.0,
+      "brier_delta_vs_full": 0.0
+    },
+    "logit_baseline": {
+      "n_decisions": 48,
+      "discriminator_auc": 1.0,
+      "auc_ci_low": 1.0,
+      "auc_ci_high": 1.0,
+      "brier": 0.25150836504186275,
+      "brier_by_segment": {
+        "price_sensitivity=high": 0.268874981874677,
+        "price_sensitivity=low": 0.2138829218999523,
+        "price_sensitivity=mid": 0.2775560636285636,
+        "wait_tolerance_minutes=high": 0.25355724562709603,
+        "wait_tolerance_minutes=low": 0.20915102023260876,
+        "wait_tolerance_minutes=mid": 0.29249978946096117,
+        "has_transit_alternative=False": 0.3002363546605089,
+        "has_transit_alternative=True": 0.17029504901078577
+      },
+      "ks_passed": 3,
+      "ks_marginals": {
+        "accepted_fare": {
+          "statistic": 0.3333333333333333,
+          "p_value": 0.3855465198257425,
+          "passed": true
+        },
+        "accepted_wait": {
+          "statistic": 0.2,
+          "p_value": 0.9383310279844598,
+          "passed": true
+        },
+        "accept_rate_by_hour": {
+          "statistic": 1.0,
+          "p_value": 0.00015540015540015537,
+          "passed": false
+        },
+        "purpose_mix": {
+          "statistic": 0.4,
+          "p_value": 0.18441617684449832,
+          "passed": true
+        }
+      },
+      "elasticity": -2.291692627851408,
+      "elasticity_ci_low": -2.4783617909555806,
+      "elasticity_ci_high": -0.9956336538558764,
+      "elasticity_sign": "negative",
+      "elasticity_verdict": "FAIL",
+      "cost_usd": 0.0,
+      "cost_per_1k": 0.0,
+      "latency_p50": 0.039770645555108786,
+      "latency_p95": 0.09082049177959561,
+      "auc_delta_vs_full": 0.0,
+      "brier_delta_vs_full": -0.0522550099581372
+    },
+    "random_baseline": {
+      "n_decisions": 48,
+      "discriminator_auc": 1.0,
+      "auc_ci_low": 1.0,
+      "auc_ci_high": 1.0,
+      "brier": 0.3125,
+      "brier_by_segment": {
+        "price_sensitivity=high": 0.3125,
+        "price_sensitivity=low": 0.3125,
+        "price_sensitivity=mid": 0.3125,
+        "wait_tolerance_minutes=high": 0.3125,
+        "wait_tolerance_minutes=low": 0.3125,
+        "wait_tolerance_minutes=mid": 0.3125,
+        "has_transit_alternative=False": 0.3125,
+        "has_transit_alternative=True": 0.3125
+      },
+      "ks_passed": 3,
+      "ks_marginals": {
+        "accepted_fare": {
+          "statistic": 0.23076923076923078,
+          "p_value": 0.8978057035171046,
+          "passed": true
+        },
+        "accepted_wait": {
+          "statistic": 0.5384615384615384,
+          "p_value": 0.04427244582043343,
+          "passed": true
+        },
+        "accept_rate_by_hour": {
+          "statistic": 1.0,
+          "p_value": 0.00015540015540015537,
+          "passed": false
+        },
+        "purpose_mix": {
+          "statistic": 0.23076923076923078,
+          "p_value": 0.8978057035171046,
+          "passed": true
+        }
+      },
+      "elasticity": -0.007250878266708796,
+      "elasticity_ci_low": -1.0839631399830842,
+      "elasticity_ci_high": 1.1733278670079197,
+      "elasticity_sign": "negative",
+      "elasticity_verdict": "PASS",
+      "cost_usd": 0.0,
+      "cost_per_1k": 0.0,
+      "latency_p50": 8.583534508943558e-06,
+      "latency_p95": 5.409563891589639e-05,
+      "auc_delta_vs_full": 0.0,
+      "brier_delta_vs_full": 0.008736625000000053
+    }
+  }
+}

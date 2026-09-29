@@ -1,0 +1,11 @@
+services:
+  sim:
+    build: .
+    image: rider-agent-sim:latest
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data        # raw TLC data + processed panel + traces
+      - ./reports:/app/reports  # fidelity/screening reports and figures
+      - ./runs:/app/runs        # scratch workspace for run artifacts
+    working_dir: /app

@@ -95,8 +95,14 @@ def evaluate(
     provider: Annotated[
         str, typer.Option("--provider", help="auto | anthropic | openai | offline")
     ] = "auto",
+    cache_db: Annotated[
+        str | None, typer.Option("--cache-db", help="LLM response cache DuckDB path")
+    ] = None,
 ) -> None:
     """Run the fidelity evaluation (traces, discriminator, ablations, report)."""
+    from pathlib import Path
+
+    from rider_sim.config import LLM_CACHE_DB
     from rider_sim.eval.runner import run_evaluation
 
     report_path = run_evaluation(
@@ -106,6 +112,7 @@ def evaluate(
         offers_per_rider=offers_per_rider,
         seed=seed,
         provider=provider,
+        cache_db=Path(cache_db) if cache_db else LLM_CACHE_DB,
     )
     console.print(f"[green]wrote[/green] {report_path}")
 

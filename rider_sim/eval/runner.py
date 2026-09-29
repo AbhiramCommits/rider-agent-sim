@@ -15,7 +15,9 @@ Flow per run:
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
+import time
 from pathlib import Path
 from typing import Any, cast
 
@@ -37,6 +39,7 @@ from rider_sim.agent.tools import ToolRegistry
 from rider_sim.config import (
     LLM_CACHE_DB,
     PERSONAS_PATH,
+    REPORTS_DIR,
     RIDER_AGENT_PROMPT_V1,
     RIDER_AGENT_PROMPT_V2,
     TRIPS_PATH,
@@ -44,6 +47,7 @@ from rider_sim.config import (
 from rider_sim.eval.ablations import (
     DEMOGRAPHIC_FIELDS,
     AblationConfig,
+    cost_per_1k,
     permutation_matrix,
     select_configs,
     summary_row,
@@ -131,9 +135,10 @@ def run_config(
     run_id: str,
     cache_db: Path | None,
     trips_path: Path,
-) -> tuple[pd.DataFrame, float]:
-    """Run one config over all offers; return (trace, total_cost_usd)."""
+) -> tuple[pd.DataFrame, float, list[float]]:
+    """Run one config over all offers; return (trace, total_cost_usd, latencies)."""
     rows: list[dict[str, object]] = []
+    latencies: list[float] = []
     client: LLMClient | None = (
         LLMClient(backend=backend, cache_db=cache_db) if config.kind == "llm" else None
     )
@@ -163,7 +168,9 @@ def run_config(
                 reject_counterfactual=bool(offer_record["reject_counterfactual"]),
             ).to_ride_offer()
             cost_before = client.cost_usd if client is not None else 0.0
+            started = time.perf_counter()
             decision = agent.decide(offer)
+            latencies.append(time.perf_counter() - started)
             cost_delta = (client.cost_usd if client is not None else 0.0) - cost_before
             if isinstance(agent, LogitRiderAgent):
                 p_accept = agent.accept_probability(offer)
@@ -217,7 +224,7 @@ def run_config(
     save_trace(run_id, config.name, rows)
     if client is not None:
         client.report_cache_stats()
-    return trace, client.cost_usd if client is not None else 0.0
+    return trace, client.cost_usd if client is not None else 0.0, latencies
 
 
 def run_evaluation(
@@ -256,15 +263,17 @@ def run_evaluation(
     metrics_by_config: dict[str, dict[str, Any]] = {}
     costs: dict[str, float] = {}
     traces: dict[str, pd.DataFrame] = {}
+    latencies: dict[str, list[float]] = {}
     scores: dict[str, tuple[list[float], list[float]]] = {}
 
     for config in configs:
         console.log(f"[bold]running config[/bold] {config.name} (backend={backend.name})")
-        trace, cost_usd = run_config(
+        trace, cost_usd, config_latencies = run_config(
             config, offers, personas, backend, seed, run_id, cache_db, trips_path
         )
         traces[config.name] = trace
         costs[config.name] = cost_usd
+        latencies[config.name] = config_latencies
         sim_feats = sequence_features(sim_events(trace), market_fares, seed)
         discriminator = run_discriminator(real_feats, sim_feats, seed=seed, n_bootstrap=n_bootstrap)
         metrics_by_config[config.name] = {
@@ -283,6 +292,15 @@ def run_evaluation(
         for name in metrics_by_config
     }
     perms = permutation_matrix(scores, n_permutations=n_permutations, seed=seed)
+    _write_metrics_json(
+        run_id=run_id,
+        provider=backend.name,
+        seed=seed,
+        metrics=metrics_by_config,
+        traces=traces,
+        costs=costs,
+        latencies=latencies,
+    )
     return render_report(
         run_id=run_id,
         provider=backend.name,
@@ -294,3 +312,75 @@ def run_evaluation(
         real_events=events,
         seed=seed,
     )
+
+
+def _write_metrics_json(
+    run_id: str,
+    provider: str,
+    seed: int,
+    metrics: dict[str, dict[str, Any]],
+    traces: dict[str, pd.DataFrame],
+    costs: dict[str, float],
+    latencies: dict[str, list[float]],
+) -> Path:
+    """Write the machine-readable summary to reports/metrics.json."""
+    rows: dict[str, Any] = {}
+    reference = metrics.get("full")
+    for name, config_metrics in metrics.items():
+        discriminator = config_metrics["discriminator"]
+        calibration = config_metrics["calibration"]
+        distributions = config_metrics["distributions"]
+        mechanism = config_metrics["mechanism"]
+        auc = discriminator["auc"]
+        auc_ci = discriminator["auc_ci"]
+        config_latency = np.asarray(latencies[name])
+        n_decisions = len(traces[name])
+        row: dict[str, Any] = {
+            "n_decisions": n_decisions,
+            "discriminator_auc": auc,
+            "auc_ci_low": auc_ci[0],
+            "auc_ci_high": auc_ci[1],
+            "brier": calibration["brier"],
+            "brier_by_segment": calibration.get("brier_by_segment", {}),
+            "ks_passed": distributions["n_passed"],
+            "ks_marginals": {
+                marginal: {
+                    "statistic": distributions[marginal]["statistic"],
+                    "p_value": distributions[marginal]["p_value"],
+                    "passed": distributions[marginal]["passed"],
+                }
+                for marginal in (
+                    "accepted_fare",
+                    "accepted_wait",
+                    "accept_rate_by_hour",
+                    "purpose_mix",
+                )
+            },
+            "elasticity": mechanism["elasticity"],
+            "elasticity_ci_low": mechanism["elasticity_ci"][0],
+            "elasticity_ci_high": mechanism["elasticity_ci"][1],
+            "elasticity_sign": (
+                "negative"
+                if np.isfinite(mechanism["elasticity"]) and mechanism["elasticity"] < 0
+                else "non_negative"
+            ),
+            "elasticity_verdict": mechanism["verdict"],
+            "cost_usd": costs[name],
+            "cost_per_1k": cost_per_1k(costs[name], n_decisions),
+            "latency_p50": float(np.percentile(config_latency, 50)),
+            "latency_p95": float(np.percentile(config_latency, 95)),
+        }
+        if reference is not None and name != "full":
+            row["auc_delta_vs_full"] = auc - reference["discriminator"]["auc"]
+            row["brier_delta_vs_full"] = calibration["brier"] - reference["calibration"]["brier"]
+        rows[name] = row
+    payload: dict[str, Any] = {
+        "run_id": run_id,
+        "provider": provider,
+        "seed": seed,
+        "configs": rows,
+    }
+    path = REPORTS_DIR / "metrics.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, default=str))
+    return path

@@ -1,164 +1,148 @@
 # rider-agent-sim
 
-LLM-driven generative rider simulation for a ride-hailing marketplace,
-validated against real NYC TLC behavioral data.
+Pre-screening ride-hailing product interventions with LLM-agent simulation,
+validated against real NYC TLC behavior -- before burning A/B traffic.
 
-The pipeline downloads one month of real NYC TLC High Volume FHV (Uber/Lyft/Via)
-trip records, builds a semi-synthetic panel of 2,000 pseudo-riders whose trips
-are real (real zones, times, fares, tips, waits, driver pay), fits each
-pseudo-rider a **data-grounded persona** from their own trip history, simulates
-their accept/reject choices on counterfactual offers (optionally via an LLM),
-and validates the simulated choices against the real behavioral distributions.
+## The problem
 
-## Setup
+Marketplace teams typically test pricing, surge, and messaging interventions
+with live A/B experiments, which are slow, expensive, and risky (bad surge
+changes hurt riders in production). This repo replaces the first screening
+stage with *generative rider simulation*: a panel of pseudo-riders built from
+real NYC TLC trip records, each fitted with a data-grounded persona, whose
+accept/reject decisions on counterfactual offers are produced by an LLM agent
+(memory + tool use). The simulated traces are then judged by a fidelity
+pipeline -- discriminator, calibration, KS marginals, a surge-elasticity
+mechanism check against a published range, and a held-out back-test -- and the
+surviving interventions get a concrete real-A/B sample-size estimate. The CI
+runs a regression gate on simulation *realism*, not just on code.
 
-Requires Python 3.11 and [`uv`](https://docs.astral.sh/uv/).
+## Architecture
 
-```bash
-uv sync                 # or: make install
-cp .env.example .env    # optional; only needed for LLM decision mode
+```mermaid
+flowchart LR
+    A[TLC HVFHV parquet + zones] --> B[DuckDB loader]
+    B --> C[pseudo-rider panel<br/>2000 riders x 5-40 trips]
+    C --> D[personas<br/>traits fit per rider]
+    D --> E[LLM rider agent<br/>persona + memory + tools]
+    F[counterfactual offers<br/>from real trips] --> E
+    E --> G[trace store<br/>data/processed/traces/&lt;run&gt;/&lt;config&gt;.parquet]
+    G --> H[fidelity eval<br/>discriminator, calibration,<br/>KS, mechanism, ablations]
+    H --> I[fidelity gate<br/>metrics.json vs baseline]
+    G --> J[product screening<br/>cells, CUPED, power]
+    J --> K[back-test<br/>held-out surge response]
+    H --> L[reports/fidelity_*.md]
+    J --> M[reports/screening_*.md]
 ```
 
-Set `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` in `.env` to use LLM decision
-mode in `simulate`. Without keys, the pipeline falls back to a statistical
-decision model and everything still runs.
+## Headline results
+
+The table below is filled from the committed run
+`reports/fidelity_final-offline.md` (`run_id=final-offline`, 200 riders, 2
+offer replicates per rider, 2400 decisions per config, seed 7). **This run
+used the deterministic offline backend** (see `rider_sim/eval/backends.py`)
+because no live-API credits were available at the time of writing; LLM cost
+and latency columns are therefore not reported -- they require a live run,
+which is one command once an API key with credits is set (see Reproduce).
+Nothing below is invented: every cell comes from `reports/metrics.json`.
+
+| metric (full config) | value | note |
+| --- | --- | --- |
+| discriminator AUC | 1.000 (95% CI [1.000, 1.000]) | offline backend trivially separable; a live LLM run is the informative case |
+| Brier vs real revealed acceptance | 0.340 overall | by segment: price-sens low 0.333 / mid 0.343 / high 0.344; wait-tol low 0.337 / mid 0.346 / high 0.337; transit False 0.340 / True 0.343 |
+| KS marginals passed | 1 / 4 | only purpose_mix passes; fare/wait/hourly rates reject |
+| measured surge elasticity | -0.734 (CI [-0.861, -0.631]) | sign correct, magnitude FAIL vs literature [-0.6, -0.4] (too elastic) |
+| ablation AUC deltas vs full | logit -0.0018; others 0.0000 | LLM-side ablations inert under offline backend (documented) |
+| ablation Brier deltas vs full | logit -0.2195; random -0.0274; others ~0 | the fitted logit baseline is much better calibrated |
+| back-test | sim -0.517 vs real -1.360 (signed error +0.844), direction agrees, CI misses, verdict PARTIAL | equilibrium-vs-controlled caveat in the report |
+| cost per 1,000 decisions | $0.00 (offline backend) | live-LLM cost unavailable; pricing model in `agent/llm.py` |
+| decision latency p50 / p95 | 1.9 ms / 9.2 ms (offline backend) | not LLM latency |
+
+The screening report (`reports/screening_final-offline.md`) ranks five
+intervention cells: all are screened out in this run -- surge cells show a
+large negative accept-rate lift (-0.455, CI [-0.561, -0.349]) and price cells
+show zero lift because the offline backend is surge-sensitive but
+price-insensitive. Every recommendation states its decision rule.
+
+## What the ablations show
+
+The ablation harness itself is the result: memory, persona reduction, tool
+use, and prompt version are all wired and independently measurable. Under the
+offline backend only the two baselines differ (the logit baseline's Brier of
+0.120 vs 0.340 shows how far the trait-rule decision layer is from calibrated
+behavior, and its elasticity of -1.013 is correctly FAILed against the
+literature range). The LLM-side ablations are inert here by construction --
+the offline backend parses only the persona and offer blocks -- so drawing
+conclusions about which *LLM* components carry realism requires the live run
+(one command; the response cache and CI gate make it a deterministic rerun).
+
+## Limitations and threats to validity
+
+- **Pseudo-riders, not real people.** TLC trip records have no rider ID; the
+  panel is semi-synthetic (real trips, synthesized attribution). Only
+  distributional statements are grounded in the real data.
+- **Single city, single month.** NYC TLC HVFHV, 2024-01. No claims beyond
+  this population.
+- **LLM population bias.** Any live-LLM run samples one model's behavioral
+  priors; per-model calibration against real data is exactly what the
+  calibration and KS checks exist for, but they bound, not remove, the bias.
+- **Prompt sensitivity.** Decisions are prompt-dependent; the v1/v2 ablation
+  exists to measure this, and the prompt version is logged with every
+  decision. Versioned prompts only.
+- **The back-test is a directional gate.** The real surge-band ratio reflects
+  the equilibrium allocation of rides (demand *and* supply), not a controlled
+  experiment; exact agreement is not expected and a miss is reported
+  honestly.
+- **No post-accept churn.** Completed rides = accepted offers; abandonment is
+  the complement of acceptance.
+- **Offline backend numbers are pipeline self-tests.** Everything labeled
+  "offline backend" validates the machinery, not LLM behavior.
 
 ## Quickstart
 
 ```bash
-make fetch-data   # download TLC data (idempotent, ~450 MB for 2024-01)
-make build        # construct the pseudo-rider panel (2000 riders)
-make personas     # fit personas (python -m rider_sim personas --n 2000 --seed 7)
-make simulate     # simulate choices on counterfactual offers
-make evaluate     # validate simulated choices vs real behavior
-```
-
-Or via the CLI directly:
-
-```bash
-python -m rider_sim fetch --month 2024-01
-python -m rider_sim build --n-riders 2000 --seed 7
-python -m rider_sim personas --n 2000 --seed 7
-python -m rider_sim simulate --n 200 --seed 7 [--mode auto|llm|statistical]
-python -m rider_sim evaluate --run-id demo --ablations all
-python -m rider_sim screen --run-id demo --backtest
+uv sync                       # or: make install
+cp .env.example .env          # fill ANTHROPIC_API_KEY / OPENAI_API_KEY
+make fetch-data               # idempotent TLC download (~450 MB)
+make build                    # 2000-rider pseudo-rider panel
+make personas                 # data-grounded personas
+make evaluate                 # fidelity evaluation + ablations + report
+make screen RUN_ID=<run>      # screening + back-test report
 ```
 
 ## Data pipeline
 
-### 1. Fetch (`rider_sim/data/fetch.py`)
-
-Downloads two public files from the TLC CloudFront mirror into `data/raw/`,
-skipping anything already cached (idempotent; partial downloads are atomic):
-
-- `fhvhv_tripdata_{YYYY-MM}.parquet` — one month of High Volume FHV trip
-  records (`request/pickup/dropoff` timestamps, zones, miles, time, fares,
-  tips, driver pay, shared flags).
-- `taxi_zone_lookup.csv` — zone ID → borough/zone name lookup.
-
-### 2. Pseudo-rider panel (`rider_sim/data/build_riders.py`)
-
-Loads the Parquet with DuckDB, filters to usable trips, and derives real
-per-trip observables:
-
-| observable | definition |
-| --- | --- |
-| `base_passenger_fare` | raw TLC column |
-| `tips` | raw TLC column |
-| `trip_miles`, `trip_time` | raw TLC columns |
-| `wait_secs` | `pickup_datetime - request_datetime`, clamped to `[0, 3600]` |
-| `surge_ratio` | `driver_pay / (trip_miles * median_pay_per_mile)` where the median is computed over the whole month |
-
-Every trip is bucketed into a *commute cell* on the four clustering
-dimensions (pickup zone, hour-of-day bucket, weekday/weekend, trip-miles
-bucket), the cells are clustered with KMeans to form fallback neighborhoods,
-and each of `N=2000` pseudo-riders is assigned 5-40 real trips sampled from a
-home cell drawn proportionally to real trip volume. Outputs:
-
-- `data/processed/trips.parquet` — every assigned trip + `rider_id` + derived observables
-- `data/processed/riders.parquet` — `rider_id`, home/work zone, trip count, home cell
-
-#### Caveat: riders are pseudo-riders, not real people
-
-**Real TLC trip records contain no rider identifier** — every row is an
-anonymous trip. The panel is therefore **semi-synthetic**: each individual
-trip is real, but the attribution of trips to a specific "rider" is
-constructed. Each pseudo-rider owns 5-40 trips that share a coherent home
-zone and commute pattern, and every per-trip observable (fares, tips, waits,
-surge ratios) is real, but:
-
-- individual-level statements (e.g. "this rider's personal elasticity") are
-  modeling artifacts;
-- only distributional statements (e.g. "riders who tip less are more price
-  sensitive") are grounded in the real data;
-- rider IDs do not correspond to any real account and cannot be linked
-  across months.
-
-Treat `riders.parquet` as a *sampling device* over the real trip distribution,
-not as a recovered panel of individuals. This construction is documented
-honestly in the `build_riders` docstring.
-
-### 3. Personas (`rider_sim/personas.py`)
-
-`RiderPersona` is a Pydantic model with `rider_id`, `home_zone`, `work_zone`,
-`trip_purpose_mix`, `price_sensitivity`, `wait_tolerance_minutes`,
-`income_bracket`, `has_transit_alternative`, `loyalty_tier`,
-`observed_trip_count`, `median_fare_paid`, `median_wait_experienced`.
-
-`sample_personas(n, seed)` fits each persona **from that pseudo-rider's own
-empirical trip stats** — nothing is hand-invented:
-
-| trait | derivation |
-| --- | --- |
-| `price_sensitivity` | `1 - (0.6 * fare-per-mile percentile + 0.4 * tip rate)` — revealed preference |
-| `wait_tolerance_minutes` | `max(p75 accepted wait, 1.25 * median accepted wait)` — a lower bound, since every real trip was accepted |
-| `income_bracket` | quartile of the rider's median fare paid (spend proxy) |
-| `has_transit_alternative` | median trip < 2.5 mi *and* price sensitivity ≥ 0.55 (derived heuristic) |
-| `loyalty_tier` | trip frequency (≥25 platinum, ≥15 gold, ≥8 silver, else member) |
-| `trip_purpose_mix` | zone/hour classification of their real trips (airport zones 1/132/138, night = social, weekday peaks = commute, rest = errand) |
-
-Persists to `data/processed/personas.parquet`.
-
-### 4. Simulation (`rider_sim/simulate.py`)
-
-Generates counterfactual offers from each persona's *own real trips* (real
-zone pair, hour, miles, fare, wait) with price (×0.8/×1.0/×1.25) and wait
-(×0.5/×1.0/×2.0) multipliers. Each offer is judged by an LLM (Anthropic
-Claude, OpenAI fallback) when a key is set, else by a trait-calibrated logit.
-Outputs `data/processed/simulated_choices.parquet`.
-
-### 5. Fidelity evaluation (`rider_sim/eval/`)
-
-The scientific core. `python -m rider_sim evaluate --run-id <id> --ablations all`
-runs every ablation config over a counterfactual offer grid derived from real
-trips, stores decision traces under `data/processed/traces/<run_id>/`, and
-renders `reports/fidelity_<run_id>.md` plus figures. Every number is computed
-from the data and traces; nothing is hardcoded.
-
-- **Discriminator** — featurizes real and simulated decision sequences
-  (accept rate, fare-vs-market percentile, accepted wait, surge elasticity,
-  purpose mix, action entropy, run lengths), trains a LightGBM classifier with
-  grouped K-fold by rider_id, and reports AUC with a bootstrap 95% CI. AUC
-  near 0.5 = indistinguishable; near 1.0 = trivially separable. Feature
-  importances name the failure mode.
-- **Calibration** — reliability curves and Brier score of predicted accept
-  probability vs real revealed acceptance (base offers are trips real riders
-  took; ×1.8-fare counterfactuals are labeled rejects), segmented by price
-  sensitivity tercile, wait tolerance tercile, and transit alternative.
-- **Distributions** — two-sample KS tests of accepted fare, accepted wait,
-  accept rate by hour, and purpose mix against the real marginals, with
-  Bonferroni-adjusted verdicts.
-- **Mechanism** — log-log elasticity of accept rate w.r.t. surge with a
-  bootstrap CI, checked for sign and magnitude against the literature range
-  below.
-- **Ablations** — full agent, no memory, demographics-only persona, no tool
-  use, prompt v1 vs v2, logit baseline, random baseline; one table of
-  config × {AUC, Brier, KS passed, elasticity verdict, cost per 1k decisions},
-  with permutation tests for AUC differences.
-
-Without API keys, the evaluator falls back to a deterministic offline backend
-(pipeline validation only); set `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` for real
-LLM configs. Reruns are free via the DuckDB LLM response cache.
+1. **Fetch** (`rider_sim/data/fetch.py`) -- downloads one month of HVFHV trip
+   records and the taxi-zone lookup from the TLC CloudFront mirror into
+   `data/raw/`, idempotently and atomically.
+2. **Pseudo-rider panel** (`rider_sim/data/build_riders.py`) -- DuckDB
+   filters usable trips; trips are bucketed into commute cells (pickup zone,
+   hour, weekday/weekend, miles bucket), cells are KMeans-clustered into
+   fallback neighborhoods, and 2000 pseudo-riders each get 5-40 real trips
+   from a home cell drawn proportionally to real volume. Real observables are
+   derived per trip: base fare, tips, miles, time, request-to-pickup wait,
+   and `surge_ratio = driver_pay / (trip_miles * median_pay_per_mile)`.
+3. **Personas** (`rider_sim/personas.py`) -- every persona is fit from its
+   pseudo-rider's own trip history (price sensitivity from fare percentile
+   and tip rate, wait tolerance from accepted waits, income from spend
+   quartiles, loyalty from frequency, purpose mix from zone/hour rules).
+4. **Agent** (`rider_sim/agent/`) -- `LLMRiderAgent` builds its prompt from
+   persona + recalled memory + offer, runs up to 2 native tool-call rounds
+   (`check_price_history`, `check_eta_reliability`,
+   `check_transit_alternative`, all reading the processed Parquet), parses a
+   strict `Decision` with one repair retry, and logs prompt version and
+   parse failures. A DuckDB response cache keyed by sha256 of (provider,
+   model, prompt, tools, temperature, seed) makes reruns free and
+   deterministic; logit and random baselines share the interface.
+5. **Fidelity eval** (`rider_sim/eval/`) -- grouped-K-fold LightGBM
+   discriminator with bootstrap CI and named feature importances; per-segment
+   reliability curves and Brier; four KS marginals with Bonferroni verdicts;
+   surge-elasticity log-log regression with bootstrap CI against the
+   literature range; seven ablation configs with permutation tests and cost.
+6. **Screening** (`rider_sim/screening/`) -- paired per-rider cell lifts with
+   rider-vs-model variance decomposition and CUPED pre-period adjustment;
+   closed-form two-proportion power at real traffic volume; an auditable
+   held-out back-test (surge never enters persona fitting).
 
 ### Literature benchmark
 
@@ -168,53 +152,58 @@ The mechanism check compares simulated surge elasticity against:
 > Consumer Surplus: The Case of Uber*, NBER Working Paper 22627. Own-price
 > elasticity of demand for Uber rides: roughly **-0.4 to -0.6**.
 
-The simulated accept-rate elasticity must be negative (sign PASS) and its
-bootstrap CI must overlap this range (magnitude PASS).
+Sign PASS requires a negative elasticity; magnitude PASS requires the
+bootstrap CI to overlap this range.
 
-### 6. Product screening (`rider_sim/screening/`)
+## Fidelity gate (CI)
 
-The applied layer: `python -m rider_sim screen --run-id <id> --backtest`
-renders `reports/screening_<run_id>.md`.
+`.github/workflows/ci.yml` runs lint, strict mypy, pytest with coverage
+(fail under 80%), and a **fidelity-gate** job: it rebuilds the pipeline,
+runs the deterministic offline evaluation against the committed response
+cache (`tests/fixtures/cache/llm_cache.duckdb`), and compares
+`reports/metrics.json` with the committed baseline `eval_baselines.json`
+(`python -m rider_sim.gate`). The build fails if the discriminator AUC
+drifts outside its tolerance band, fewer KS marginals pass than the
+baseline, or the elasticity sign flips -- a regression gate on simulation
+realism. TLC data is cached between runs; `reports/` is uploaded as an
+artifact.
 
-- **Cells** — intervention cells (fare discounts, price increases, surge
-  multipliers) are screened against the base control cell using a paired
-  per-rider design: every cell contains counterfactual offers built from the
-  same real trips. Primary metric: accept-rate lift; secondaries: completed
-  rides, mean accepted fare, abandonment.
-- **Uncertainty decomposition** — each cell's offers split into a pre period
-  and an experiment window (deterministic, by offer id). Two variance
-  components are reported separately: population variance (rider-level
-  nonparametric bootstrap) and model variance (parametric bootstrap of the
-  LLM decision layer, Bernoulli(p_accept)), so a reader sees how much noise
-  is the population vs the model.
-- **CUPED** — each rider's pre-period control metric is the covariate;
-  the report states the variance reduction achieved per cell.
-- **Power** — closed-form two-proportion sample size at 80% power /
-  alpha 0.05, converted to days using the real monthly trip volume
-  (computed from the raw TLC Parquet). This is the concrete
-  pre-experiment deliverable.
-- **Back-test** — one real behavioral relationship is held out and specified
-  audibly in `config.BACKTEST_HOLDOUT`: the real demand response across two
-  surge bands (personas are fit from fares/waits/miles only, never surge).
-  The simulation is scored blind on the same bands: signed error, whether
-  the simulated CI covers the real point estimate, directional agreement,
-  and a PASS/PARTIAL/FAIL verdict. The report states the honest caveat that
-  the real ratio reflects the equilibrium allocation, not a controlled
-  experiment — a documented miss is a real result.
-- **Recommendation** — every cell gets a screen-in / screen-out call with
-  the decision rule stated in the report.
+## Docker
+
+```bash
+make docker-eval   # multi-stage image, non-root user, keyless:
+                   # offline evaluate using the committed response cache
+```
+
+`docker-compose.yml` mounts `data/`, `reports/`, and `runs/` and reads
+`.env` for provider keys.
+
+## Reproduce (clean clone to report)
+
+```bash
+git clone <repo> && cd rider-agent-sim
+uv sync
+cp .env.example .env                       # optional: set an API key
+make fetch-data                            # downloads + caches TLC 2024-01
+make build                                 # 2000 pseudo-riders (seed 7)
+make personas                              # 2000 personas (seed 7)
+# deterministic, keyless fidelity run (what this README reports):
+python -m rider_sim evaluate --run-id final-offline --ablations all \
+  --provider offline --n-riders 200 --offers-per-rider 2 --seed 7
+python -m rider_sim screen --run-id final-offline --backtest
+# regression gate:
+python -m rider_sim.gate
+# live-LLM equivalent once a key with credits is set:
+python -m rider_sim evaluate --run-id live-001 --ablations all \
+  --provider auto --n-riders 200 --offers-per-rider 2 --seed 7
+```
 
 ## Development
 
 ```bash
 make lint   # ruff check + format check + mypy (strict)
-make test   # pytest
+make test   # pytest (coverage >= 80% enforced in CI)
 ```
 
-Tests cover persona schema validity, seed-deterministic sampling, the
-evaluation pipeline with known ground truth (identical distributions →
-AUC CI covers 0.5; shifted sims → KS rejects; synthetic elasticities → the
-mechanism verdict is correct), and screening (injected lifts recovered
-inside the CI; power matching the closed-form two-proportion formula;
-CUPED variance reduction on correlated deltas).
+Estimators and assumptions are written up in `docs/METHODS.md`.
 All pipeline steps are deterministic for a fixed seed.

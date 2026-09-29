@@ -13,7 +13,12 @@ dist/
 /data/
 
 # Generated evaluation reports
-/reports/
+/reports/*
+!/reports/metrics.json
+!/reports/fidelity_final-offline.md
+!/reports/screening_final-offline.md
+!/reports/figures/final-offline/
+!/reports/figures/final-offline/**
 
 # Tool caches
 .pytest_cache/

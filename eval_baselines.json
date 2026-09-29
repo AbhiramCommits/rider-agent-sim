@@ -1,0 +1,8 @@
+{
+  "description": "Fidelity baseline for the deterministic offline gate run (evaluate --run-id gate --ablations all --provider offline --n-riders 40 --offers-per-rider 2 --seed 7). Compared against reports/metrics.json by rider_sim/gate.py.",
+  "config": "full",
+  "discriminator_auc": 1.0,
+  "discriminator_auc_tolerance": 0.02,
+  "min_ks_marginals_passed": 2,
+  "elasticity_sign": "negative"
+}

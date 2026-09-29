@@ -1,0 +1,79 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --frozen
+      - run: uv run mypy rider_sim
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --frozen
+      - run: uv run pytest --cov=rider_sim --cov-report=term-missing --cov-fail-under=80
+
+  fidelity-gate:
+    needs: [lint, typecheck, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --frozen
+
+      - name: Restore TLC raw data cache
+        id: tlc-cache
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: tlc-2024-01-v1
+
+      - name: Fetch TLC data (if not cached)
+        run: uv run python -m rider_sim fetch --month 2024-01
+
+      - name: Build pseudo-rider panel
+        run: uv run python -m rider_sim build --n-riders 2000 --seed 7 --month 2024-01
+
+      - name: Fit personas
+        run: uv run python -m rider_sim personas --n 2000 --seed 7
+
+      - name: Run deterministic evaluation (offline backend + committed response cache)
+        run: |
+          uv run python -m rider_sim evaluate --run-id gate --ablations all \
+            --provider offline --n-riders 40 --offers-per-rider 2 --seed 7 \
+            --cache-db tests/fixtures/cache/llm_cache.duckdb
+
+      - name: Fidelity regression gate
+        run: uv run python -m rider_sim.gate
+
+      - name: Upload reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: reports/
