@@ -41,6 +41,7 @@ python -m rider_sim build --n-riders 2000 --seed 7
 python -m rider_sim personas --n 2000 --seed 7
 python -m rider_sim simulate --n 200 --seed 7 [--mode auto|llm|statistical]
 python -m rider_sim evaluate --run-id demo --ablations all
+python -m rider_sim screen --run-id demo --backtest
 ```
 
 ## Data pipeline
@@ -170,6 +171,39 @@ The mechanism check compares simulated surge elasticity against:
 The simulated accept-rate elasticity must be negative (sign PASS) and its
 bootstrap CI must overlap this range (magnitude PASS).
 
+### 6. Product screening (`rider_sim/screening/`)
+
+The applied layer: `python -m rider_sim screen --run-id <id> --backtest`
+renders `reports/screening_<run_id>.md`.
+
+- **Cells** — intervention cells (fare discounts, price increases, surge
+  multipliers) are screened against the base control cell using a paired
+  per-rider design: every cell contains counterfactual offers built from the
+  same real trips. Primary metric: accept-rate lift; secondaries: completed
+  rides, mean accepted fare, abandonment.
+- **Uncertainty decomposition** — each cell's offers split into a pre period
+  and an experiment window (deterministic, by offer id). Two variance
+  components are reported separately: population variance (rider-level
+  nonparametric bootstrap) and model variance (parametric bootstrap of the
+  LLM decision layer, Bernoulli(p_accept)), so a reader sees how much noise
+  is the population vs the model.
+- **CUPED** — each rider's pre-period control metric is the covariate;
+  the report states the variance reduction achieved per cell.
+- **Power** — closed-form two-proportion sample size at 80% power /
+  alpha 0.05, converted to days using the real monthly trip volume
+  (computed from the raw TLC Parquet). This is the concrete
+  pre-experiment deliverable.
+- **Back-test** — one real behavioral relationship is held out and specified
+  audibly in `config.BACKTEST_HOLDOUT`: the real demand response across two
+  surge bands (personas are fit from fares/waits/miles only, never surge).
+  The simulation is scored blind on the same bands: signed error, whether
+  the simulated CI covers the real point estimate, directional agreement,
+  and a PASS/PARTIAL/FAIL verdict. The report states the honest caveat that
+  the real ratio reflects the equilibrium allocation, not a controlled
+  experiment — a documented miss is a real result.
+- **Recommendation** — every cell gets a screen-in / screen-out call with
+  the decision rule stated in the report.
+
 ## Development
 
 ```bash
@@ -177,8 +211,10 @@ make lint   # ruff check + format check + mypy (strict)
 make test   # pytest
 ```
 
-Tests cover persona schema validity, seed-deterministic sampling, and the
+Tests cover persona schema validity, seed-deterministic sampling, the
 evaluation pipeline with known ground truth (identical distributions →
 AUC CI covers 0.5; shifted sims → KS rejects; synthetic elasticities → the
-mechanism verdict is correct).
+mechanism verdict is correct), and screening (injected lifts recovered
+inside the CI; power matching the closed-form two-proportion formula;
+CUPED variance reduction on correlated deltas).
 All pipeline steps are deterministic for a fixed seed.

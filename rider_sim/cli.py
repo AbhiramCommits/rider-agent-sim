@@ -63,6 +63,29 @@ def simulate(
 
 
 @app.command()
+def screen(
+    run_id: Annotated[str | None, typer.Option("--run-id", help="trace run id")] = None,
+    backtest: Annotated[bool, typer.Option("--backtest")] = False,
+    config: Annotated[str, typer.Option("--config", help="trace config name")] = "full",
+    seed: Annotated[int, typer.Option("--seed")] = DEFAULT_SEED,
+) -> None:
+    """Screen intervention cells, compute A/B power, optionally back-test."""
+    from rider_sim.screening.runner import run_screening
+
+    if run_id is None:
+        from rider_sim.config import TRACES_DIR
+
+        runs = sorted(path.name for path in TRACES_DIR.glob("*") if path.is_dir())
+        console.print(
+            f"[red]--run-id is required.[/red] Available runs under {TRACES_DIR}: "
+            + (", ".join(runs) if runs else "none (run `evaluate` first)")
+        )
+        raise typer.Exit(code=1)
+    report_path = run_screening(run_id=run_id, with_backtest=backtest, config=config, seed=seed)
+    console.print(f"[green]wrote[/green] {report_path}")
+
+
+@app.command()
 def evaluate(
     run_id: Annotated[str | None, typer.Option("--run-id", help="run identifier")] = None,
     ablations: Annotated[str, typer.Option("--ablations", help="all | baselines | llm")] = "all",

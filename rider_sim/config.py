@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 DATA_DIR: Path = REPO_ROOT / "data"
@@ -26,3 +27,15 @@ LLM_CACHE_DB: Path = PROCESSED_DIR / "llm_cache.duckdb"
 TRACES_DIR: Path = PROCESSED_DIR / "traces"
 REPORTS_DIR: Path = REPO_ROOT / "reports"
 FIGURES_DIR: Path = REPORTS_DIR / "figures"
+
+# Auditable back-test holdout: the one real behavioral relationship the
+# simulation must predict blind. The personas are fit from fares, waits, and
+# miles only -- never from surge -- so the real demand response across surge
+# bands is genuinely held out. The real effect is the log ratio of trip
+# shares in the two surge bands; the sim effect is the log ratio of simulated
+# accept rates over trace offers falling in the same bands.
+BACKTEST_HOLDOUT: dict[str, Any] = {
+    "type": "surge_band_demand_ratio",
+    "high_band": [2.0, 3.0],
+    "low_band": [1.0, 1.2],
+}

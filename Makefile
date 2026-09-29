@@ -6,6 +6,7 @@ SEED ?= 7
 PERSONAS_N ?= 2000
 SIM_N ?= 200
 EVAL_ABLATIONS ?= all
+RUN_ID ?= screen-demo
 
 install:
 	uv sync
@@ -32,3 +33,6 @@ simulate: personas
 
 evaluate: personas
 	uv run python -m rider_sim evaluate --ablations $(EVAL_ABLATIONS)
+
+screen:
+	uv run python -m rider_sim screen --run-id $(RUN_ID) --backtest
